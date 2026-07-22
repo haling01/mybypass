@@ -1,0 +1,86 @@
+name: Update China IP Lists
+
+on:
+  # 定时触发：北京时间每天早上 8:00 (UTC 0:00)
+  schedule:
+    - cron: '0 23 * * *'
+  
+  # 支持在 GitHub 页面手动触发
+  workflow_dispatch:
+
+# 赋予工作流提交代码的权限
+permissions:
+  contents: write
+
+jobs:
+  update-ip-lists:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出 mybypass 仓库的 main 分支
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      # 2. 下载 Loyalsoldier/geoip 的 cn.txt 文本文件
+      - name: Fetch raw CN IP list
+        run: |
+          echo "正在从 Loyalsoldier/geoip 下载最新的 cn.txt..."
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt" -o raw_cn.txt
+
+      # 3. 使用 Python 将 IPv4 与 IPv6 精准分离
+      - name: Split IPv4 and IPv6
+        run: |
+          python3 -c "
+          import ipaddress
+
+          ipv4_list = []
+          ipv6_list = []
+
+          with open('raw_cn.txt', 'r', encoding='utf-8') as f:
+              for line in f:
+                  line = line.strip()
+                  if not line or line.startswith('#'):
+                      continue
+                  try:
+                      # 尝试解析为 IP 网络对象 (包含 CIDR 网段)
+                      net = ipaddress.ip_network(line, strict=False)
+                      if net.version == 4:
+                          ipv4_list.append(line)
+                      elif net.version == 6:
+                          ipv6_list.append(line)
+                  except ValueError:
+                      # 如果遇到非法格式直接忽略
+                      pass
+
+          # 写入 ipv4-cn.txt
+          with open('ipv4-cn.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(ipv4_list) + '\n')
+
+          # 写入 ipv6-cn.txt
+          with open('ipv6-cn.txt', 'w', encoding='utf-8') as f:
+              f.write('\n'.join(ipv6_list) + '\n')
+
+          print(f'分类完成：提取到 {len(ipv4_list)} 条 IPv4 网段，{len(ipv6_list)} 条 IPv6 网段。')
+          "
+          # 清理临时下载的原始文件
+          rm raw_cn.txt
+
+      # 4. 提交并推送到 main 分支
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 将修改或新生成的文件加入暂存区
+          git add ipv4-cn.txt ipv6-cn.txt
+          
+          # 检查是否有文件更新
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "检测到 IP 列表有更新，开始提交..."
+            git commit -m "chore: 自动更新 CN IPv4/IPv6 列表 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            git push origin main
+          else
+            echo "内容未发生变化，无需提交。"
+          fi
