@@ -1,4 +1,4 @@
-name: Update China IP Lists
+name: Update IP and Domain Lists
 
 on:
   schedule:
@@ -9,54 +9,108 @@ permissions:
   contents: write
 
 jobs:
-  update-ip-lists:
+  update-lists:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. 升级为 v5 版本以支持最新的 Node.js 运行环境
+      # 1. 检出仓库 main 分支
       - name: Checkout repository
         uses: actions/checkout@v5
         with:
           ref: main
 
-      # 2. 下载 Loyalsoldier/geoip 的 cn.txt 文本文件
-      - name: Fetch raw CN IP list
+      # 2. 下载所有源文件
+      - name: Fetch raw files
         run: |
-          echo "正在从 Loyalsoldier/geoip 下载最新的 cn.txt..."
+          echo "正在下载远程源文件..."
+          # IP 列表
           curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/cn.txt" -o raw_cn.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/telegram.txt" -o raw_tg.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/google.txt" -o raw_gg.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/netflix.txt" -o raw_nf.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/twitter.txt" -o raw_tt.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/facebook.txt" -o raw_fb.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/geoip/release/text/tor.txt" -o raw_tor.txt
 
-      # 3. 使用 Python 将 IPv4 与 IPv6 精准分离
-      - name: Split IPv4 and IPv6
+          # 域名列表
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/direct-list.txt" -o raw_direct.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/apple-cn.txt" -o raw_apple.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/proxy-list.txt" -o raw_proxy.txt
+          curl -sSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/gfw.txt" -o raw_gfw.txt
+
+      # 3. 使用 Python 统一处理 IP 拆分与域名清洗
+      - name: Process IP and Domain lists
         run: |
           python3 -c "
           import ipaddress
 
-          ipv4_list = []
-          ipv6_list = []
+          # 通用函数：拆分 IPv4 / IPv6
+          def split_ip(input_file, ipv4_out, ipv6_out):
+              v4_list, v6_list = [], []
+              with open(input_file, 'r', encoding='utf-8') as f:
+                  for line in f:
+                      line = line.strip()
+                      if not line or line.startswith('#'):
+                          continue
+                      try:
+                          net = ipaddress.ip_network(line, strict=False)
+                          if net.version == 4:
+                              v4_list.append(line)
+                          elif net.version == 6:
+                              v6_list.append(line)
+                      except ValueError:
+                          pass
+              
+              with open(ipv4_out, 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(v4_list) + '\n')
+              with open(ipv6_out, 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(ipv6_list) + '\n')
+              
+              print(f'[{input_file}] IP 处理完成 -> IPv4: {len(v4_list)} 条, IPv6: {len(v6_list)} 条')
 
-          with open('raw_cn.txt', 'r', encoding='utf-8') as f:
-              for line in f:
-                  line = line.strip()
-                  if not line or line.startswith('#'):
-                      continue
-                  try:
-                      net = ipaddress.ip_network(line, strict=False)
-                      if net.version == 4:
-                          ipv4_list.append(line)
-                      elif net.version == 6:
-                          ipv6_list.append(line)
-                  except ValueError:
-                      pass
+          # 通用函数：清洗域名规则
+          def clean_domain_list(input_file, output_file):
+              cleaned_list = []
+              with open(input_file, 'r', encoding='utf-8') as f:
+                  for line in f:
+                      line = line.strip()
+                      # 过滤空行与注释
+                      if not line or line.startswith('#'):
+                          continue
+                      # 删除以 regexp: 开头的行
+                      if line.startswith('regexp:'):
+                          continue
+                      # 移除 full: 前缀
+                      if line.startswith('full:'):
+                          line = line.replace('full:', '', 1)
+                      # 删除不包含 '.' 的行
+                      if '.' not in line:
+                          continue
+                      
+                      cleaned_list.append(line)
 
-          with open('ipv4-cn.txt', 'w', encoding='utf-8') as f:
-              f.write('\n'.join(ipv4_list) + '\n')
+              with open(output_file, 'w', encoding='utf-8') as f:
+                  f.write('\n'.join(cleaned_list) + '\n')
 
-          with open('ipv6-cn.txt', 'w', encoding='utf-8') as f:
-              f.write('\n'.join(ipv6_list) + '\n')
+              print(f'[{input_file}] 域名处理完成 -> 提取 {len(cleaned_list)} 条规则至 {output_file}')
 
-          print(f'分类完成：提取到 {len(ipv4_list)} 条 IPv4 网段，{len(ipv6_list)} 条 IPv6 网段。')
+          # --- 执行 IP 处理 ---
+          split_ip('raw_cn.txt', 'ipv4-cn.txt', 'ipv6-cn.txt')
+          split_ip('raw_tg.txt', 'ipv4-tg.txt', 'ipv6-tg.txt')
+          split_ip('raw_gg.txt', 'ipv4-gg.txt', 'ipv6-gg.txt')
+          split_ip('raw_nf.txt', 'ipv4-nf.txt', 'ipv6-nf.txt')
+          split_ip('raw_tt.txt', 'ipv4-tt.txt', 'ipv6-tt.txt')
+          split_ip('raw_fb.txt', 'ipv4-fb.txt', 'ipv6-fb.txt')
+          split_ip('raw_tor.txt', 'ipv4-tor.txt', 'ipv6-tor.txt')
+
+          # --- 执行域名处理 ---
+          clean_domain_list('raw_proxy.txt', 'proxy.txt')
+          clean_domain_list('raw_gfw.txt', 'gfw.txt')
+          clean_domain_list('raw_direct.txt', 'direct.txt')
+          clean_domain_list('raw_apple.txt', 'apple.txt')
           "
-          rm raw_cn.txt
+          # 清理本地临时文件
+          rm -f raw_*.txt
 
       # 4. 提交并推送到 main 分支
       - name: Commit and Push changes
@@ -64,12 +118,13 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           
-          git add ipv4-cn.txt ipv6-cn.txt
+          # 暂存所有生成的列表文件
+          git add ipv4-cn.txt ipv6-cn.txt ipv4-tg.txt ipv6-tg.txt ipv4-gg.txt ipv6-gg.txt ipv4-nf.txt ipv6-nf.txt ipv4-tt.txt ipv6-tt.txt ipv4-fb.txt ipv6-fb.txt ipv4-tor.txt ipv6-tor.txt proxy.txt gfw.txt direct.txt apple.txt
           
           if [ -n "$(git status --porcelain)" ]; then
-            echo "检测到 IP 列表有更新，开始提交..."
-            git commit -m "chore: 自动更新 CN IPv4/IPv6 列表 ($(date +'%Y-%m-%d %H:%M:%S'))"
+            echo "检测到内容有更新，正在提交..."
+            git commit -m "iplistBot: 自动更新 IP (CN/TG/GG/NF/TT/FB/TOR) 与域名 (Proxy/GFW/Direct/Apple) 列表 ($(date +'%Y-%m-%d %H:%M:%S'))"
             git push origin main
           else
-            echo "内容未发生变化，无需提交。"
+            echo "所有规则均为最新，无需提交。"
           fi
