@@ -11098,6 +11098,7 @@ hiporn.net
 hippyhillscomix.com
 hipzoom.net
 hiroshimabank.co.jp
+historylines.net
 historyofdota.com
 historyofdota.net
 historyofdota.org
@@ -13607,6 +13608,7 @@ kitakyushubank.co.jp
 kiwi.jp
 kiwi.kz
 kiwibrowser.com
+kiwix.org
 kiyobank.co.jp
 kk-whys.co.jp
 kk.stream
@@ -14728,6 +14730,7 @@ mcdonalds.se
 mcdonaldsapps.com
 mcdonaldsarabia.com
 mcdonaldsparties.co.nz
+mceindex.com
 mcisco.com
 mcpeaceofmind.com
 mcrouter.net
