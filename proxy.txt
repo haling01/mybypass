@@ -9800,6 +9800,7 @@ gelbooru.wjcodes.com
 gemfire.net
 gemfury.com
 gemini.com
+gemma.ai
 gen.lib.rus.ec
 genbank.ru
 gencraft.com
